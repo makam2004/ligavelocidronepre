@@ -6,23 +6,15 @@ import path from 'path';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const ORIGINAL_PATH = path.join(process.cwd(), 'jugadores.txt');
-const JUGADORES_PATH = '/tmp/jugadores.txt';
-const RANKING_ANUAL_PATH = path.join(process.cwd(), 'rankinganual.txt');
-const REGLAMENTO_PATH = path.join(process.cwd(), 'reglamento.txt');
+app.use('/static', express.static('static'));
+app.use(express.urlencoded({ extended: true }));
 
 const puntos_posicion = [10, 8, 6, 4, 2];
 const puntos_default = 1;
 
-// Copia inicial del archivo jugadores.txt a /tmp
-fs.copyFile(ORIGINAL_PATH, JUGADORES_PATH).catch(() => {});
-
-app.use('/static', express.static('static'));
-app.use(express.urlencoded({ extended: true }));
-
 async function leerJugadores() {
   try {
-    const data = await fs.readFile(JUGADORES_PATH, 'utf8');
+    const data = await fs.readFile('jugadores.txt', 'utf8');
     return data.split('\n').map(x => x.trim()).filter(Boolean);
   } catch {
     return [];
@@ -33,44 +25,49 @@ async function escribirJugador(nombre) {
   try {
     const jugadores = await leerJugadores();
     if (!jugadores.includes(nombre)) {
-      await fs.appendFile(JUGADORES_PATH, `${nombre}\n`);
+      await fs.appendFile('jugadores.txt', `\n${nombre}`);
+      return true;
     }
-  } catch (err) {
-    console.error('Error al escribir jugador:', err);
-  }
-}
-
-async function leerRankingAnual() {
-  try {
-    const data = await fs.readFile(RANKING_ANUAL_PATH, 'utf8');
-    return data.split('\n').map(x => x.trim()).filter(Boolean);
-  } catch {
-    return [];
+    return false;
+  } catch (e) {
+    console.error('Error escribiendo jugador:', e);
+    return false;
   }
 }
 
 async function leerReglamento() {
   try {
-    const data = await fs.readFile(REGLAMENTO_PATH, 'utf8');
+    const data = await fs.readFile('reglamento.txt', 'utf8');
     return data.split('\n').map(x => x.trimEnd());
   } catch {
     return ['No se pudo cargar el reglamento.'];
   }
 }
 
-async function obtenerResultados(url, jugadores) {
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
-
+async function leerRankingAnual() {
   try {
+    const data = await fs.readFile('rankinganual.txt', 'utf8');
+    return data.split('\n').map(x => x.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function obtenerResultados(url, jugadores) {
+  try {
+    const browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
     await page.evaluate(() => {
       const tabs = Array.from(document.querySelectorAll('a')).filter(el => el.textContent.includes('Race Mode'));
       if (tabs.length > 0) tabs[0].click();
     });
+
     await page.waitForSelector('tbody tr', { timeout: 10000 });
 
     const track = await page.$eval('div.container h3', el => el.innerText.trim());
@@ -91,7 +88,7 @@ async function obtenerResultados(url, jugadores) {
     await browser.close();
     return { escenario, track, resultados };
   } catch (e) {
-    await browser.close();
+    console.error('Error al obtener resultados desde:', url, e);
     return { escenario: 'Error', track: 'Error', resultados: [] };
   }
 }
@@ -138,25 +135,30 @@ app.get('/', async (req, res) => {
           padding: 20px;
         }
         .top-bar {
-          display: grid;
-          grid-template-columns: 1fr auto 1fr;
+          display: flex;
+          justify-content: space-between;
           align-items: center;
-          justify-content: center;
           margin-bottom: 20px;
         }
-        .top-bar .left,
-        .top-bar .right {
-          display: flex;
-          justify-content: center;
+        .titulo-bar {
+          text-align: center;
+          flex-grow: 1;
         }
         .top-bar h1 {
-          font-size: 40px;
-          margin: 0;
-          text-align: center;
+          font-size: 42px;
           font-family: 'Castellar', serif;
         }
-        .logo {
-          height: 50px;
+        .icono-telegram {
+          height: 36px;
+        }
+        .boton {
+          padding: 10px 16px;
+          font-size: 16px;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          background: #007bff;
+          color: white;
         }
         .tracks, .rankings {
           display: flex;
@@ -176,69 +178,55 @@ app.get('/', async (req, res) => {
         }
         .resultado {
           font-size: 17px;
-          font-weight: 500;
-          line-height: 1.6;
           font-family: monospace;
           white-space: pre;
         }
         .popup {
-          display: none;
           position: fixed;
-          top: 20%;
+          top: 50%;
           left: 50%;
-          transform: translate(-50%, -20%);
-          background: rgba(0, 0, 0, 0.95);
-          color: #fff;
+          transform: translate(-50%, -50%);
+          background: white;
+          color: black;
           padding: 20px;
-          border-radius: 10px;
-          z-index: 10;
+          border-radius: 8px;
+          display: none;
+          max-width: 400px;
+          z-index: 1000;
         }
         .popup ul {
-          list-style: disc;
-          margin: 10px 0 0 20px;
+          padding-left: 20px;
         }
         .popup ul li {
-          margin-bottom: 5px;
+          list-style: disc;
         }
-        .popup ul li:has(pre) {
-          list-style-type: none;
+        .popup ul li.tabulado {
+          list-style: none;
         }
-        .popup .close {
+        .popup .cerrar {
+          background: #dc3545;
+          color: white;
+          padding: 6px 12px;
+          border: none;
           margin-top: 10px;
-          text-align: center;
+          float: right;
+          border-radius: 5px;
           cursor: pointer;
-          font-weight: bold;
-        }
-        .telegram {
-          position: absolute;
-          top: 20px;
-          right: 20px;
-        }
-        .telegram img {
-          width: 40px;
-        }
-        .boton {
-          background: rgba(255,255,255,0.9);
-          color: #000;
-          padding: 8px 14px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: bold;
         }
       </style>
     </head>
     <body>
-      <div class="telegram">
-        <a href="https://t.me/ligasemanalvelocidron" target="_blank">
-          <img src="https://cdn-icons-png.flaticon.com/512/2111/2111646.png" alt="Telegram">
-        </a>
-      </div>
-
       <div class="top-bar">
-        <div class="left"><div class="boton" onclick="document.getElementById('popupReglamento').style.display='block'">Reglamento</div></div>
-        <div><h1>LIGA VELOCIDRONE SEMANA ${semana}</h1></div>
-        <div class="right"><div class="boton" onclick="document.getElementById('popupAlta').style.display='block'">Alta piloto</div></div>
+        <button class="boton" onclick="document.getElementById('popup-reglamento').style.display='block'">Reglamento</button>
+        <div class="titulo-bar">
+          <h1>LIGA VELOCIDRONE SEMANA ${semana}</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <a href="https://t.me/ligasemanalvelocidron" target="_blank">
+            <img src="https://cdn-icons-png.flaticon.com/512/2111/2111646.png" alt="Telegram" class="icono-telegram">
+          </a>
+          <button class="boton" onclick="document.getElementById('popup-alta').style.display='block'">Alta piloto</button>
+        </div>
       </div>
 
       <div class="tracks">
@@ -250,22 +238,22 @@ app.get('/', async (req, res) => {
         <div class="card"><h3>Ranking Anual</h3><div class="resultado">${ranking_anual.join('\n')}</div></div>
       </div>
 
-      <div id="popupReglamento" class="popup">
+      <div id="popup-reglamento" class="popup">
         <h3>Reglamento</h3>
         <ul>
-          ${reglamento.map(linea => linea.startsWith('\t') ? `<li style="list-style:none">${linea}</li>` : `<li>${linea}</li>`).join('')}
+          ${reglamento.map(l => l.startsWith('\t') ? `<li class="tabulado">${l.trim()}</li>` : `<li>${l}</li>`).join('')}
         </ul>
-        <div class="close" onclick="document.getElementById('popupReglamento').style.display='none'">Cerrar</div>
+        <button class="cerrar" onclick="document.getElementById('popup-reglamento').style.display='none'">Cerrar</button>
       </div>
 
-      <div id="popupAlta" class="popup">
-        <h3>Alta de piloto</h3>
+      <div id="popup-alta" class="popup">
+        <h3>Alta piloto</h3>
         <form method="POST">
           <input type="text" name="nuevo_piloto" placeholder="Nombre en Velocidrone" required><br><br>
           <label><input type="checkbox" name="soy_humano" required> No soy un robot</label><br><br>
-          <input type="submit" value="Añadir">
+          <input type="submit" class="boton" value="Añadir">
         </form>
-        <div class="close" onclick="document.getElementById('popupAlta').style.display='none'">Cerrar</div>
+        <button class="cerrar" onclick="document.getElementById('popup-alta').style.display='none'">Cerrar</button>
       </div>
     </body>
     </html>
@@ -277,10 +265,14 @@ app.post('/', async (req, res) => {
   req.on('data', chunk => chunks.push(chunk));
   req.on('end', async () => {
     const data = Buffer.concat(chunks).toString();
-    const nuevo_piloto = new URLSearchParams(data).get("nuevo_piloto");
-    const soy_humano = new URLSearchParams(data).get("soy_humano");
+    const params = new URLSearchParams(data);
+    const nuevo_piloto = params.get("nuevo_piloto")?.trim();
+    const soy_humano = params.get("soy_humano");
+
+    console.log('Alta piloto:', nuevo_piloto, 'Verificación:', soy_humano);
+
     if (nuevo_piloto && soy_humano === 'on') {
-      await escribirJugador(nuevo_piloto.trim());
+      await escribirJugador(nuevo_piloto);
     }
     res.redirect('/');
   });
@@ -288,7 +280,7 @@ app.post('/', async (req, res) => {
 
 app.get('/ver-jugadores', async (req, res) => {
   const jugadores = await leerJugadores();
-  res.type('text/plain').send(jugadores.join('\n'));
+  res.type('text').send(jugadores.join('\n'));
 });
 
 app.listen(PORT, () => {

@@ -56,7 +56,7 @@ async function leerRankingAnual() {
 async function obtenerResultados(url, jugadores) {
   try {
     const browser = await puppeteer.launch({
-      headless: 'new',
+      headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
