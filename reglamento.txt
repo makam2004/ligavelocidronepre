@@ -8,4 +8,3 @@ El sistema de puntuación será por posición en cada uno de los tracks:
 	4º 4 puntos
 	5º 2 puntos
 	Resto 1 punto
-
