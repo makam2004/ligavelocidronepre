@@ -1,0 +1,11 @@
+Cada piloto deberá registrarse con el nombre exacto con el que se haya dado de alta en Velocidrone
+Los tiempos sólamente quedarán registrados si se compite en "SINGLE CLASS - LAPS"
+Los tracks se intentarán cambiarán semanalmente y el ranking se contabilizará de Domingo a Domingo
+El sistema de puntuación será por posición en cada uno de los tracks:
+	1º 10 puntos 
+	2º 8 puntos
+	3º 6 puntos
+	4º 4 puntos
+	5º 2 puntos
+	Resto 1 punto
+
